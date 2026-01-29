@@ -1,6 +1,7 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Analysis/LoopAnalysisManager.h"
+#include "llvm/IR/Dominators.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
@@ -9,6 +10,7 @@
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/PassPlugin.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Transforms/Utils/LoopUtils.h"
 
 #include <cstdlib>
 #include <fstream>
@@ -84,18 +86,23 @@ static bool argsLoopInvariant(CallInst* CI, Loop* L) {
 }
 
 struct CollapseDerefsPass : PassInfoMixin<CollapseDerefsPass> {
-    bool processLoop(Loop* L, Function& F) {
+    bool processLoop(Loop* L, Function& F, LoopInfo& LI, DominatorTree& DT) {
         bool changed = false;
         for (Loop* Sub : L->getSubLoops()) {
-            changed |= processLoop(Sub, F);
+            changed |= processLoop(Sub, F, LI, DT);
         }
 
         BasicBlock* preheader = L->getLoopPreheader();
         if (!preheader) {
+            preheader = InsertPreheaderForLoop(L, &DT, &LI, nullptr, false);
+        }
+        if (!preheader) {
             return changed;
         }
-
-        IRBuilder<> entryBuilder(&*F.getEntryBlock().getFirstInsertionPt());
+        Instruction* preTerm = preheader->getTerminator();
+        if (!preTerm) {
+            return changed;
+        }
 
         for (BasicBlock* BB : L->blocks()) {
             for (auto it = BB->begin(); it != BB->end(); ) {
@@ -121,8 +128,7 @@ struct CollapseDerefsPass : PassInfoMixin<CollapseDerefsPass> {
                     continue;
                 }
 
-                AllocaInst* slot = entryBuilder.CreateAlloca(CI->getType(), nullptr, "triple_deref_cache");
-                IRBuilder<> preBuilder(preheader->getTerminator());
+                IRBuilder<> preBuilder(preTerm);
                 SmallVector<Value*, 8> callArgs;
                 callArgs.reserve(CI->arg_size());
                 for (Use &U : CI->args()) {
@@ -132,11 +138,8 @@ struct CollapseDerefsPass : PassInfoMixin<CollapseDerefsPass> {
                 CallInst* hoisted = preBuilder.CreateCall(calleeRef, callArgs);
                 hoisted->setCallingConv(CI->getCallingConv());
                 hoisted->setAttributes(CI->getAttributes());
-                preBuilder.CreateStore(hoisted, slot);
 
-                IRBuilder<> loopBuilder(CI);
-                LoadInst* cached = loopBuilder.CreateLoad(CI->getType(), slot, "triple_deref_cached");
-                CI->replaceAllUsesWith(cached);
+                CI->replaceAllUsesWith(hoisted);
                 CI->eraseFromParent();
                 changed = true;
             }
@@ -147,9 +150,10 @@ struct CollapseDerefsPass : PassInfoMixin<CollapseDerefsPass> {
 
     PreservedAnalyses run(Function& F, FunctionAnalysisManager& FAM) {
         LoopInfo& LI = FAM.getResult<LoopAnalysis>(F);
+        DominatorTree& DT = FAM.getResult<DominatorTreeAnalysis>(F);
         bool changed = false;
         for (Loop* L : LI) {
-            changed |= processLoop(L, F);
+            changed |= processLoop(L, F, LI, DT);
         }
         return changed ? PreservedAnalyses::none() : PreservedAnalyses::all();
     }

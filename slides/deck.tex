@@ -1,0 +1,285 @@
+\documentclass[aspectratio=169]{beamer}
+
+\usepackage[T1]{fontenc}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{tabularx}
+
+\definecolor{hladd}{RGB}{210,245,220}
+\definecolor{hlrm}{RGB}{255,220,220}
+\definecolor{hlfocus}{RGB}{255,242,179}
+
+\newcommand{\hladd}[1]{\colorbox{hladd}{#1}}
+\newcommand{\hlrm}[1]{\colorbox{hlrm}{#1}}
+\newcommand{\hlfocus}[1]{\colorbox{hlfocus}{#1}}
+
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  columns=fullflexible,
+  keepspaces=true,
+  showstringspaces=false,
+  emph={triple_deref},
+  emphstyle=\color{red!70!black}\bfseries,
+  emph={[2]cached,hoisted},
+  emphstyle=[2]\color{green!50!black}\bfseries,
+  keywordstyle=\color{blue!70!black}\bfseries,
+  commentstyle=\color{gray!70}\itshape,
+  stringstyle=\color{orange!80!black},
+}
+
+\setbeamerfont{title}{series=\bfseries}
+\setbeamerfont{frametitle}{series=\bfseries}
+\setbeamerfont{framesubtitle}{series=\bfseries}
+
+\title{Proof-Guided Dereference Collapse}
+\subtitle{Loop-Invariant Hoisting of Guarded Pointer Chains in LLVM}
+\date{January 28, 2026}
+
+\begin{document}
+\input{bench_results.tex}
+
+\begin{frame}
+  \titlepage
+  \vspace{-0.2cm}
+  \begin{itemize}
+    \item C kernels use checked pointer operations (no UB)
+    \item LLVM pass builds a guarded heap-access graph (proof of purity)
+    \item Collapse pass hoists invariant deref chains into a preheader (SSA)
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{1. Motivation}
+  \begin{itemize}
+    \item Pointer dereference chains inside loops are expensive and branchy
+    \item Guard checks make safety explicit but add repeated work
+    \item If inputs are invariant, repeating guarded chains is pure waste
+  \end{itemize}
+  \vspace{0.2cm}
+  \begin{block}{Goal}
+    Replace repeated guarded dereferences in a loop with a single cached SSA value.
+  \end{block}
+\end{frame}
+
+\begin{frame}[fragile]{2. Baseline C code}
+\begin{columns}[T]
+\column{0.52\textwidth}
+\textbf{Baseline}
+\begin{lstlisting}[language=C]
+for (uint64_t k = 0; k < iters; ++k) {
+  Eval r = triple_deref(heap, p, 0);
+  sum += r.value;
+}
+\end{lstlisting}
+\column{0.48\textwidth}
+\begin{itemize}
+  \item Each iteration performs guards + 3 loads
+  \item Work scales with loop trip count
+  \item No reuse across iterations
+\end{itemize}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Analysis: Baseline C}
+  \begin{itemize}
+    \item Each iteration re-enters the guarded dereference chain.
+    \item All guards and loads are repeated even when inputs are invariant.
+    \item The loop body cost scales with chain length $\times$ trip count.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]{3. Optimized C (conceptual)}
+\begin{columns}[T]
+\column{0.52\textwidth}
+\textbf{Hoisted}
+\begin{lstlisting}[language=C]
+Eval cached = triple_deref(heap, p, 0);
+for (uint64_t k = 0; k < iters; ++k) {
+  Eval r = cached;
+  sum += r.value;
+}
+\end{lstlisting}
+\column{0.48\textwidth}
+\begin{itemize}
+  \item Compute once in preheader
+  \item Loop uses SSA value only
+  \item Eliminates repeated guards + loads
+\end{itemize}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Analysis: Hoisted C}
+  \begin{itemize}
+    \item The guarded chain is evaluated once in the preheader.
+    \item The loop consumes a single SSA value per iteration.
+    \item Repeated guards and loads are removed from the hot path.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]{4. Guarded semantics (baseline vs optimized)}
+\begin{columns}[T]
+\column{0.48\textwidth}
+\textbf{Baseline (inside loop)}
+\begin{lstlisting}
+vp  = guard_ptr(p)
+v1  = guard_nonnull(vp)
+v2  = load_ptr(v1)
+v3  = guard_ptr(v2)
+v4  = guard_nonnull(v3)
+v5  = load_ptr(v4)
+v6  = guard_ptr(v5)
+v7  = guard_nonnull(v6)
+v8  = load_ptr(v7)
+return v8
+\end{lstlisting}
+\column{0.48\textwidth}
+\textbf{Optimized}
+\begin{lstlisting}
+// preheader
+vp  = guard_ptr(p)
+...
+cached = load_ptr(v7)
+
+// inside loop
+return cached
+\end{lstlisting}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Analysis: Guarded Semantics}
+  \begin{itemize}
+    \item Baseline repeats a pure chain of guards + loads.
+    \item Optimized version preserves the same checks but runs them once.
+    \item Semantic proof: the guarded chain is side-effect free.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]{5. LLVM IR (baseline)}
+\begin{lstlisting}[language=LLVM]
+loop:
+  %val = call { i64, i32 } @triple_deref(...)
+  %v   = extractvalue { i64, i32 } %val, 1
+  %sum = add i64 %sum, %v
+  br label %loop
+\end{lstlisting}
+\vspace{0.2cm}
+\begin{itemize}
+  \item \texttt{call @triple\_deref} sits inside the loop body
+  \item Repeated guard+load chain every iteration
+\end{itemize}
+\end{frame}
+
+\begin{frame}{Analysis: LLVM IR Baseline}
+  \begin{itemize}
+    \item The call is inside the loop, so costs multiply by trip count.
+    \item The loop depends on a pointer-chasing call each iteration.
+    \item No reuse of the computed value.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]{6. LLVM IR (optimized, SSA)}
+\begin{lstlisting}[language=LLVM]
+preheader:
+  %hoisted = call { i64, i32 } @triple_deref(...)
+  br label %loop
+
+loop:
+  %v = extractvalue { i64, i32 } %hoisted, 1
+  %sum = add i64 %sum, %v
+  br label %loop
+\end{lstlisting}
+\vspace{0.2cm}
+\begin{itemize}
+  \item One call in preheader, no loads from cache
+  \item SSA value dominates all loop uses
+\end{itemize}
+\end{frame}
+
+\begin{frame}{Analysis: LLVM IR Optimized}
+  \begin{itemize}
+    \item The call is hoisted to the preheader and dominates the loop.
+    \item The loop uses a single SSA value—no memory loads.
+    \item This is loop-invariant code motion with a proof of purity.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]{7. Assembly intuition}
+\begin{columns}[T]
+\column{0.48\textwidth}
+\textbf{Baseline}
+\begin{lstlisting}
+loop:
+  call triple_deref   ; guard+load chain
+  add  s0, s0, a0
+  j    loop
+\end{lstlisting}
+\column{0.48\textwidth}
+\textbf{Optimized}
+\begin{lstlisting}
+preheader:
+  call triple_deref
+loop:
+  add  s0, s0, a0     ; cached SSA value
+  j    loop
+\end{lstlisting}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Analysis: Assembly Intuition}
+  \begin{itemize}
+    \item Baseline spends cycles in a call + dependent loads per iteration.
+    \item Optimized loop is reduced to arithmetic on a cached value.
+    \item Pointer chasing is removed from the hot loop body.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{8. Correctness argument}
+\begin{itemize}
+  \item \textbf{Loop invariance:} inputs to \texttt{triple\_deref} are invariant in the loop.
+  \item \textbf{Purity:} guarded deref graph contains only guards + loads, no side effects.
+  \item \textbf{Dominance:} preheader dominates loop body, so SSA value is available.
+\end{itemize}
+\vspace{0.2cm}
+\begin{block}{Key reasoning}
+If $f$ is pure and $x$ is loop-invariant, then $f(x)$ is loop-invariant. Hoisting preserves semantics.
+\end{block}
+\end{frame}
+
+\begin{frame}{9. Benchmark methodology}
+\begin{itemize}
+  \item \textbf{Unoptimized benchmark:} volatile sink inside loop (noisy, hides benefit).
+  \item \textbf{SSA benchmark:} register accumulator + single compiler barrier.
+  \item Same heap layout and \texttt{triple\_deref} implementation for comparability.
+  \item Run config: \BenchIters iterations, \BenchRuns runs.
+\end{itemize}
+\end{frame}
+
+\begin{frame}{10. Benchmark results}
+\BenchTable
+\begin{itemize}
+  \item Microbenchmarks amplify savings (loop body becomes very small)
+  \item SSA benchmark isolates the optimization effect and lowers variance
+\end{itemize}
+\end{frame}
+
+\begin{frame}{11. Generalization}
+\begin{itemize}
+  \item Extend beyond \texttt{triple\_deref} to any linear guarded dereference chain
+  \item Recognize patterns at IR level (guards + loads + fields)
+  \item Hoist when alias + memory stability are proven (MemorySSA/AA)
+\end{itemize}
+\end{frame}
+
+\begin{frame}{12. From demo to production optimizer}
+\begin{itemize}
+  \item \textbf{Production-ready:} SSA hoist, dominance checks, preheader insertion
+  \item \textbf{Missing for real C/C++:} MemorySSA + alias analysis for heap stability
+  \item \textbf{Volatile/atomic handling:} must avoid speculation across side effects
+  \item \textbf{Profitability:} TTI cost models, loop trip counts, reg pressure
+  \item \textbf{Robustness:} remove dependence on runtime JSON graphs
+  \item \textbf{Still valid:} proof-guided LICM at IR level, target-independent
+\end{itemize}
+\end{frame}
+
+\end{document}

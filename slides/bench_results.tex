@@ -1,0 +1,18 @@
+% Auto-generated from run_bench.sh data
+\newcommand{\BenchIters}{50,000,000}
+\newcommand{\BenchRuns}{7}
+\newcommand{\BenchTable}{%
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lrrrrr}
+\toprule
+Variant & Base mean (ms) & Base ns/iter & Opt mean (ms) & Opt ns/iter & Speedup \\
+\midrule
+Unoptimized & 1632.35 & 32.647 & 95.75 & 1.915 & 17.30\\
+SSA & 1642.58 & 32.852 & 61.39 & 1.228 & 26.88\\
+\bottomrule
+\end{tabular}
+\caption{Mean timings over \BenchRuns runs at \BenchIters iterations.}
+\end{table}
+}%

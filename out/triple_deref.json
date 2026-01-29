@@ -1,0 +1,17 @@
+{
+  "function": "triple_deref",
+  "nodes": [
+    {"id":1,"kind":"input","name":"p"},
+    {"id":2,"kind":"guard_ptr","x":1},
+    {"id":3,"kind":"guard_nonnull","x":2},
+    {"id":4,"kind":"load_ptr","x":3},
+    {"id":5,"kind":"guard_ptr","x":4},
+    {"id":6,"kind":"guard_nonnull","x":5},
+    {"id":7,"kind":"load_ptr","x":6},
+    {"id":8,"kind":"guard_ptr","x":7},
+    {"id":9,"kind":"guard_nonnull","x":8},
+    {"id":10,"kind":"load_ptr","x":9}
+  ],
+  "edges": [[1,2],[2,3],[3,4],[4,5],[5,6],[6,7],[7,8],[8,9],[9,10]],
+  "output": 10
+}

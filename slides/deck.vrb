@@ -1,0 +1,20 @@
+\frametitle{7. Assembly intuition}
+\begin{columns}[T]
+\column{0.48\textwidth}
+\textbf{Baseline}
+\begin{lstlisting}
+loop:
+  call triple_deref   ; guard+load chain
+  add  s0, s0, a0
+  j    loop
+\end{lstlisting}
+\column{0.48\textwidth}
+\textbf{Optimized}
+\begin{lstlisting}
+preheader:
+  call triple_deref
+loop:
+  add  s0, s0, a0     ; cached SSA value
+  j    loop
+\end{lstlisting}
+\end{columns}

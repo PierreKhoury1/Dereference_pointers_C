@@ -1,0 +1,14 @@
+{
+  "function": "field_chain",
+  "nodes": [
+    {"id":1,"kind":"input","name":"p"},
+    {"id":2,"kind":"guard_ptr","x":1},
+    {"id":3,"kind":"guard_nonnull","x":2},
+    {"id":4,"kind":"getfield","x":3,"field":1},
+    {"id":5,"kind":"guard_ptr","x":4},
+    {"id":6,"kind":"guard_nonnull","x":5},
+    {"id":7,"kind":"getfield","x":6,"field":2}
+  ],
+  "edges": [[1,2],[2,3],[3,4],[4,5],[5,6],[6,7]],
+  "output": 7
+}

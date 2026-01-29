@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Guarded Deref Collapse | Visual Comparison</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body data-mode="split" data-side="baseline">
+  <div class="page">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">Guarded Pointer Collapse</p>
+        <h1>From guarded loads to cached value</h1>
+        <p class="lede">
+          Compare the same computation across C, guarded semantics, LLVM IR, and assembly intuition.
+          The optimization replaces repeated guarded dereferences inside a loop with a single cached value.
+        </p>
+      </div>
+      <div class="hero-card">
+        <div class="metric">
+          <span class="metric-label">Transformation</span>
+          <span class="metric-value">call → load</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Per-iter work</span>
+          <span class="metric-value">guards + loads → cached load</span>
+        </div>
+      </div>
+    </header>
+
+    <section class="controls">
+      <div class="level-tabs" id="level-tabs" role="tablist" aria-label="Abstraction levels"></div>
+
+      <div class="view-controls">
+        <div class="control-group">
+          <span class="control-label">View</span>
+          <div class="segmented" role="group" aria-label="View mode">
+            <button class="seg-btn is-active" data-mode="split">Split</button>
+            <button class="seg-btn" data-mode="single">Single</button>
+          </div>
+        </div>
+        <div class="control-group" id="side-toggle">
+          <span class="control-label">Focus</span>
+          <div class="segmented" role="group" aria-label="Baseline or optimized">
+            <button class="seg-btn is-active" data-side="baseline">Baseline</button>
+            <button class="seg-btn" data-side="optimized">Optimized</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="bench" id="bench-panel" aria-live="polite">
+      <header class="bench-header">
+        <div>
+          <h2>Benchmark snapshot</h2>
+          <p class="bench-sub" id="bench-meta">Run <span class="mono">./run_bench.sh</span> to populate live data.</p>
+        </div>
+        <div class="bench-pill">
+          <span>Mean speedup</span>
+          <strong id="bench-speedup">—</strong>
+        </div>
+      </header>
+      <div class="bench-grid">
+        <div class="bench-card">
+          <span class="bench-label">Baseline mean</span>
+          <span class="bench-value" id="bench-base-mean">—</span>
+          <span class="bench-foot" id="bench-base-nspi">—</span>
+        </div>
+        <div class="bench-card">
+          <span class="bench-label">Optimized mean</span>
+          <span class="bench-value" id="bench-opt-mean">—</span>
+          <span class="bench-foot" id="bench-opt-nspi">—</span>
+        </div>
+        <div class="bench-card">
+          <span class="bench-label">IR call count</span>
+          <span class="bench-value" id="bench-call-count">—</span>
+          <span class="bench-foot">baseline → optimized</span>
+        </div>
+      </div>
+      <div class="bench-rows" id="bench-rows"></div>
+      <div class="bench-spark" id="bench-spark"></div>
+    </section>
+
+    <section class="compare" aria-live="polite">
+      <article class="pane baseline" aria-label="Baseline">
+        <header class="pane-header">
+          <span class="pane-title">Baseline</span>
+          <span class="pane-subtitle" id="baseline-title"></span>
+        </header>
+        <p class="pane-desc" id="baseline-desc"></p>
+        <div class="code-wrap" id="baseline-code"></div>
+      </article>
+
+      <article class="pane optimized" aria-label="Optimized">
+        <header class="pane-header">
+          <span class="pane-title">Optimized</span>
+          <span class="pane-subtitle" id="optimized-title"></span>
+        </header>
+        <p class="pane-desc" id="optimized-desc"></p>
+        <div class="code-wrap" id="optimized-code"></div>
+      </article>
+    </section>
+
+    <section class="legend">
+      <div class="legend-item"><span class="swatch swatch-remove"></span>Removed / replaced</div>
+      <div class="legend-item"><span class="swatch swatch-add"></span>New / cached</div>
+      <div class="legend-item"><span class="swatch swatch-focus"></span>Focus line</div>
+    </section>
+
+    <footer class="footer">
+      <p>Tip: switch to “Single” view to focus on one side, or keep “Split” to compare line-by-line.</p>
+    </footer>
+  </div>
+
+  <script src="bench_data.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
