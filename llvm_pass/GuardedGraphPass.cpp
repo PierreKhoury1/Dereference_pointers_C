@@ -59,8 +59,9 @@ struct GraphBuilder {
 };
 
 static bool isKernelName(StringRef name) {
-    return name == "triple_deref" || name == "field_chain" || name == "guarded_chain" ||
-           name == "alias_branch" || name == "mixed_fields" || name == "add_two";
+    return name == "triple_deref" || name == "graph_walk" || name == "field_chain" ||
+           name == "guarded_chain" || name == "alias_branch" || name == "mixed_fields" ||
+           name == "add_two";
 }
 
 static Value* stripCasts(Value* v) {

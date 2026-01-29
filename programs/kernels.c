@@ -9,6 +9,16 @@ Eval triple_deref(Heap* heap, int p, int q) {
     return v3;
 }
 
+Eval graph_walk(Heap* heap, int p, int q) {
+    (void)q;
+    Eval vp = ck_input("p", p);
+    Eval v1 = ck_load_ptr(heap, vp);
+    Eval v2 = ck_load_ptr(heap, v1);
+    Eval v3 = ck_load_ptr(heap, v2);
+    Eval v4 = ck_load_ptr(heap, v3);
+    return v4;
+}
+
 Eval field_chain(Heap* heap, int p, int q) {
     (void)q;
     Eval vp = ck_input("p", p);

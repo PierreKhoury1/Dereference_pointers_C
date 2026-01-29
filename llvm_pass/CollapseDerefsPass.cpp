@@ -66,6 +66,50 @@ static bool graphIsLinearGuardedChain(StringRef funcName) {
     return hasLoad;
 }
 
+static bool isHoistAllowed(StringRef funcName) {
+    static bool initialized = false;
+    static bool allowAll = false;
+    static std::unordered_map<std::string, bool> allowed;
+
+    if (!initialized) {
+        initialized = true;
+        const char* env = std::getenv("COLLAPSE_FUNCS");
+        if (!env || !*env) {
+            allowed["triple_deref"] = true;
+        } else {
+            std::string s(env);
+            std::string token;
+            for (char c : s) {
+                if (c == ',' || c == ';' || c == ' ' || c == '\t' || c == '\n') {
+                    if (!token.empty()) {
+                        if (token == "*") {
+                            allowAll = true;
+                        } else {
+                            allowed[token] = true;
+                        }
+                        token.clear();
+                    }
+                } else {
+                    token.push_back(c);
+                }
+            }
+            if (!token.empty()) {
+                if (token == "*") {
+                    allowAll = true;
+                } else {
+                    allowed[token] = true;
+                }
+            }
+        }
+    }
+
+    if (allowAll) {
+        return true;
+    }
+    auto it = allowed.find(funcName.str());
+    return it != allowed.end();
+}
+
 static bool allUsesInLoop(CallInst* CI, Loop* L) {
     for (User* U : CI->users()) {
         Instruction* I = dyn_cast<Instruction>(U);
@@ -115,7 +159,7 @@ struct CollapseDerefsPass : PassInfoMixin<CollapseDerefsPass> {
                 if (!callee) {
                     continue;
                 }
-                if (callee->getName() != "triple_deref") {
+                if (!isHoistAllowed(callee->getName())) {
                     continue;
                 }
                 if (!graphIsLinearGuardedChain(callee->getName())) {

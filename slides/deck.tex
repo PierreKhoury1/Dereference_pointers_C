@@ -44,7 +44,7 @@
   \titlepage
   \vspace{-0.2cm}
   \begin{itemize}
-    \item C kernels use checked pointer operations (no UB)
+    \item C kernels use checked pointer operations (no undefined behavior)
     \item LLVM pass builds a guarded heap-access graph (proof of purity)
     \item Collapse pass hoists invariant deref chains into a preheader (SSA)
   \end{itemize}
@@ -60,6 +60,15 @@
   \begin{block}{Goal}
     Replace repeated guarded dereferences in a loop with a single cached SSA value.
   \end{block}
+\end{frame}
+
+\begin{frame}{Scope: Checked-pointer API}
+  \begin{itemize}
+    \item The LLVM pass only recognizes explicit \texttt{ck\_*} calls
+    \item Raw C pointer ops are not analyzed or rewritten
+    \item Safety is encoded in \texttt{ck\_*} guards + loads (no UB)
+    \item Whole-program use would require a separate source-to-source rewrite
+  \end{itemize}
 \end{frame}
 
 \begin{frame}[fragile]{2. Baseline C code}
@@ -199,7 +208,7 @@ loop:
 \begin{frame}{Analysis: LLVM IR Optimized}
   \begin{itemize}
     \item The call is hoisted to the preheader and dominates the loop.
-    \item The loop uses a single SSA value—no memory loads.
+    \item The loop uses a single SSA value -- no memory loads.
     \item This is loop-invariant code motion with a proof of purity.
   \end{itemize}
 \end{frame}
